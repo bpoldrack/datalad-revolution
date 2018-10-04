@@ -28,12 +28,9 @@ from datalad.interface.common_opts import git_opts
 from datalad.interface.common_opts import annex_opts
 from datalad.interface.common_opts import annex_init_opts
 from datalad.interface.common_opts import location_description
-from datalad.interface.common_opts import nosave_opt
-from datalad.interface.common_opts import shared_access_opt
 from datalad.support.constraints import EnsureStr
 from datalad.support.constraints import EnsureNone
 from datalad.support.constraints import EnsureKeyChoice
-from datalad.support.constraints import EnsureDType
 from datalad.support.param import Parameter
 from datalad.support.annexrepo import AnnexRepo
 from datalad.support.gitrepo import GitRepo
@@ -119,50 +116,11 @@ class RevCreate(Interface):
             doc="""enforce creation of a dataset in a non-empty directory""",
             action='store_true'),
         description=location_description,
-        # TODO could move into cfg_annex plugin
         no_annex=Parameter(
             args=("--no-annex",),
             doc="""if set, a plain Git repository will be created without any
             annex""",
             action='store_true'),
-        text_no_annex=Parameter(
-            args=("--text-no-annex",),
-            doc="""if set, all text files in the future would be added to Git,
-            not annex. Achieved by adding an entry to `.gitattributes` file. See
-            http://git-annex.branchable.com/tips/largefiles/ and `no_annex`
-            DataLad plugin to establish even more detailed control over which
-            files are placed under annex control.""",
-            action='store_true'),
-        save=nosave_opt,
-        # TODO could move into cfg_annex plugin
-        annex_version=Parameter(
-            args=("--annex-version",),
-            doc="""select a particular annex repository version. The
-            list of supported versions depends on the available git-annex
-            version. This should be left untouched, unless you know what
-            you are doing""",
-            constraints=EnsureDType(int) | EnsureNone()),
-        # TODO could move into cfg_annex plugin
-        annex_backend=Parameter(
-            args=("--annex-backend",),
-            constraints=EnsureStr() | EnsureNone(),
-            # not listing choices here on purpose to avoid future bugs
-            doc="""set default hashing backend used by the new dataset.
-            For a list of supported backends see the git-annex
-            documentation. The default is optimized for maximum compatibility
-            of datasets across platforms (especially those with limited
-            path lengths)"""),
-        # TODO could move into cfg_metadata plugin
-        native_metadata_type=Parameter(
-            args=('--native-metadata-type',),
-            metavar='LABEL',
-            action='append',
-            constraints=EnsureStr() | EnsureNone(),
-            doc="""Metadata type label. Must match the name of the respective
-            parser implementation in DataLad (e.g. "xmp").[CMD:  This option
-            can be given multiple times CMD]"""),
-        # TODO could move into cfg_access/permissions plugin
-        shared_access=shared_access_opt,
         git_opts=git_opts,
         annex_opts=annex_opts,
         annex_init_opts=annex_init_opts,
@@ -183,15 +141,9 @@ class RevCreate(Interface):
             description=None,
             dataset=None,
             no_annex=False,
-            save=True,
-            annex_version=None,
-            annex_backend='MD5E',
-            native_metadata_type=None,
-            shared_access=None,
             git_opts=None,
             annex_opts=None,
             annex_init_opts=None,
-            text_no_annex=None,
             fake_dates=False
     ):
 
@@ -297,9 +249,6 @@ class RevCreate(Interface):
 
         if git_opts is None:
             git_opts = {}
-        if shared_access:
-            # configure `git --shared` value
-            git_opts['shared'] = shared_access
 
         # important to use the given Dataset object to avoid spurious ID
         # changes with not-yet-materialized Datasets
@@ -335,29 +284,16 @@ class RevCreate(Interface):
                 tbds.path,
                 url=None,
                 create=True,
-                backend=annex_backend,
-                version=annex_version,
+                # TODO Pull from config?
+                backend='MD5E',
+                # TODO should be coming from config already
+                # version=annex_version,
                 description=description,
                 git_opts=git_opts,
                 annex_opts=annex_opts,
                 annex_init_opts=annex_init_opts,
                 fake_dates=fake_dates
             )
-
-            if text_no_annex:
-                attrs = tbrepo.get_gitattributes('.')
-                # some basic protection against useless duplication
-                # on rerun with --force
-                if not attrs.get('.', {}).get('annex.largefiles', None) == '(not(mimetype=text/*))':
-                    tbrepo.set_gitattributes([
-                        ('*', {'annex.largefiles': '(not(mimetype=text/*))'})])
-                    add_to_git.append('.gitattributes')
-
-        if native_metadata_type is not None:
-            if not isinstance(native_metadata_type, list):
-                native_metadata_type = [native_metadata_type]
-            for nt in native_metadata_type:
-                tbds.config.add('datalad.metadata.nativetype', nt)
 
         # record an ID for this repo for the afterlife
         # to be able to track siblings and children
@@ -409,7 +345,7 @@ class RevCreate(Interface):
         # save everything, we need to do this now and cannot merge with the
         # call below, because we may need to add this subdataset to a parent
         # but cannot until we have a first commit
-        tbds.add(add_to_git, to_git=True, save=save,
+        tbds.add(add_to_git, to_git=True,
                  message='[DATALAD] new dataset')
 
         # the next only makes sense if we saved the created dataset,
@@ -421,7 +357,6 @@ class RevCreate(Interface):
             # -> make submodule
             for r in dataset.add(
                     tbds.path,
-                    save=save,
                     return_type='generator',
                     result_filter=None,
                     result_xfm=None,

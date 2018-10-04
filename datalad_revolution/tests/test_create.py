@@ -112,14 +112,14 @@ def test_create_curdir(path, path2):
 @with_tempfile
 def test_create(path):
     ds = Dataset(path)
-    ds.rev_create(description="funny", native_metadata_type=['bim', 'bam', 'bum'],
-              shared_access='world')
+    ds.rev_create(description="funny")
     ok_(ds.is_installed())
     ok_clean_git(ds.path, annex=True)
 
     # check default backend
     eq_(ds.config.get("annex.backends"), 'MD5E')
-    eq_(ds.config.get("core.sharedrepository"), '2')
+    # TODO bring back via git_init_opts
+    # eq_(ds.config.get("core.sharedrepository"), '2')
     runner = Runner()
     # check description in `info`
     cmd = ['git-annex', 'info']
@@ -128,9 +128,6 @@ def test_create(path):
     # check datset ID
     eq_(ds.config.get_value('datalad.dataset', 'id'),
         ds.id)
-    assert_equal(
-        ds.config.get_value('datalad.metadata', 'nativetype'),
-        ('bim', 'bam', 'bum'))
 
 
 @with_tempfile
@@ -169,31 +166,6 @@ def test_create_sub(path):
     ok_clean_git(subds3.path, annex=False)
     assert_in("third", ds.subdatasets(result_xfm='relpaths'))
 
-
-@with_tempfile
-def test_create_sub_nosave(path):
-    ds = Dataset(path)
-    ds.rev_create()
-
-    sub_annex = ds.rev_create("sub_annex", save=False)
-    ok_(ds.repo.dirty)
-    ok_(sub_annex.repo.dirty)
-    ok_exists(opj(ds.path, ".gitmodules"))
-    ds.save(recursive=True)
-    ok_clean_git(ds.path)
-    ok_clean_git(sub_annex.path)
-
-    sub_noannex = ds.rev_create("sub_noannex", save=False, no_annex=True)
-    ok_(ds.repo.dirty)
-    ok_(sub_noannex.repo.dirty)
-    # Save has no effect because the non-annex subdataset wasn't registered as
-    # a submodule.
-    ds.save(recursive=True)
-    ok_(ds.repo.dirty)
-    ok_(sub_noannex.repo.dirty)
-
-    # Just the annex subdataset is recognized.
-    eq_(ds.subdatasets(result_xfm="relpaths"), ["sub_annex"])
 
 @with_tree(tree=_dataset_hierarchy_template)
 def test_create_subdataset_hierarchy_from_top(path):
